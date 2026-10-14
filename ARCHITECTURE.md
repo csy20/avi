@@ -16,7 +16,7 @@ Package names are `avi`, `@avi/app`, and `@avi/api`. The Rust desktop crate is `
 
 ## Desktop shell
 
-Tauri 2 wraps the Vite app. The shell crate depends on `tauri` 2.9, which is the newest stable release in the crates.io index used here. `@tauri-apps/cli` 2.12 drives it. The dialog and fs plugins stay on the 2.x line that matches that crate. `src-tauri/tauri.conf.json` points `devUrl` at `http://127.0.0.1:3000` and `frontendDist` at `../app/dist`. `beforeDevCommand` and `beforeBuildCommand` work both from the repo root and from `src-tauri/`.
+Tauri 2 wraps the Vite app. The shell crate requires `tauri` 2.9, and `Cargo.lock` resolves that to 2.12.3. `@tauri-apps/cli` 2.12 drives it. The locked plugins are `tauri-build` 2.7.2, `tauri-plugin-dialog` 2.8.2, and `tauri-plugin-fs` 2.7.0. `src-tauri/tauri.conf.json` points `devUrl` at `http://127.0.0.1:3000` and `frontendDist` at `../app/dist`. `beforeDevCommand` and `beforeBuildCommand` work both from the repo root and from `src-tauri/`.
 
 The window title is `avi`. The bundle identifier is `me.csy20.avi`.
 
@@ -48,4 +48,4 @@ Saved cloud JSON is still a bare `Track[]`. `projects.schema_version` is unused 
 
 ## What this host can verify
 
-`npm test` and `npm run build:app` run here. A Linux Tauri link needs the WebKitGTK 4.1 development package (`libwebkit2gtk-4.1-dev`) plus the usual Tauri system libraries. This environment has the runtime library and not the dev headers, and `sudo` is not available, so the desktop shell cannot be linked here. The first `cargo generate-lockfile` in `src-tauri/` also needs a crates.io index fetch; commit the resulting `Cargo.lock` with the shell. macOS and Windows bundles are configured (`bundle.targets` is `all`) and have to be built on those systems. Nothing here produces signed installers.
+`npm test` and `npm run build:app` run here. `src-tauri/Cargo.lock` is committed. `cargo check` in `src-tauri/` downloads those crates and then stops in `javascriptcore-rs-sys` because `javascriptcoregtk-4.1.pc` is missing. A Linux link needs the WebKitGTK 4.1 development packages (`libwebkit2gtk-4.1-dev`, which provides that file) plus the usual Tauri system libraries. This environment has the runtime library and not the dev headers, and `sudo` is not available, so the desktop shell cannot be linked here. macOS and Windows bundles are configured (`bundle.targets` is `all`) and have to be built on those systems. Nothing here produces signed installers.
