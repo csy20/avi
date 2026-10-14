@@ -10,7 +10,11 @@ dotenv.config()
 
 const app = express()
 const PORT = process.env.PORT || 4000
-const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173'
+const corsOrigin = (process.env.CORS_ORIGIN
+  || 'http://127.0.0.1:1420,http://localhost:1420,http://127.0.0.1:3000,http://localhost:3000')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
 const promptLimiter = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true })
 const requireAuth = buildRequireAuth()
 

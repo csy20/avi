@@ -1,6 +1,9 @@
+mod media_server;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use media_server::MediaServer;
 use tauri::Manager;
 
 #[derive(serde::Serialize)]
@@ -58,12 +61,22 @@ fn local_file_info(path: String) -> Result<LocalFileInfo, String> {
 }
 
 #[tauri::command]
-fn allow_media_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+fn media_base_url(server: tauri::State<MediaServer>) -> String {
+    server.base_url()
+}
+
+#[tauri::command]
+fn allow_media_path(
+    app: tauri::AppHandle,
+    server: tauri::State<MediaServer>,
+    path: String,
+) -> Result<(), String> {
     let candidate = PathBuf::from(&path);
     if !candidate.is_file() {
         return Err("media path is not a file".into());
     }
 
+    server.allow(&candidate)?;
     allow_asset_file(&app, &candidate)
 }
 
@@ -130,6 +143,7 @@ async fn generate_proxy(app: tauri::AppHandle, source: String, asset_id: String)
         .await
         .map_err(|error| error.to_string())??;
 
+    app.state::<MediaServer>().allow(&destination)?;
     allow_asset_file(&app, &destination)?;
     destination
         .to_str()
@@ -142,9 +156,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .setup(|app| {
+            app.manage(MediaServer::start()?);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             media_tools,
             local_file_info,
+            media_base_url,
             allow_media_path,
             generate_proxy
         ])

@@ -204,7 +204,7 @@ const desktopPlaybackUrl = async (path: string | null | undefined): Promise<stri
   try {
     await allowMediaPath(path)
   } catch {
-    // The configured asset scope may already include this file.
+    return null
   }
   return desktopMediaUrl(path)
 }
@@ -549,7 +549,7 @@ export async function importLocalPath(path: string, projectId: string): Promise<
 
   const fileType = fileTypeFromName(name)
   await allowMediaPath(path)
-  const playbackUrl = desktopMediaUrl(path)
+  const playbackUrl = await desktopMediaUrl(path)
   const [{ durationSeconds, width, height }, thumbnailUrl, fileSize] = await Promise.all([
     metadataFromSrc(playbackUrl, fileType),
     fileType === 'video' ? thumbnailFromSrc(playbackUrl) : Promise.resolve(null),
@@ -603,5 +603,5 @@ export async function schedulePlaybackProxy(asset: Asset): Promise<void> {
   if (!record) return
 
   await putAssetRecord({ ...record, proxy_path: proxyPath })
-  useEditorStore.getState().setAssetPreviewUrl(asset.id, desktopMediaUrl(proxyPath))
+  useEditorStore.getState().setAssetPreviewUrl(asset.id, await desktopMediaUrl(proxyPath))
 }

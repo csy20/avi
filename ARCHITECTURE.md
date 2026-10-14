@@ -16,11 +16,11 @@ Package names are `avi`, `@avi/app`, and `@avi/api`. The Rust desktop crate is `
 
 ## Desktop shell
 
-Tauri 2 wraps the Vite app. The shell crate requires `tauri` 2.9, and `Cargo.lock` resolves that to 2.12.3. `@tauri-apps/cli` 2.12 drives it. The locked plugins are `tauri-build` 2.7.2, `tauri-plugin-dialog` 2.8.2, and `tauri-plugin-fs` 2.7.0. `src-tauri/tauri.conf.json` points `devUrl` at `http://127.0.0.1:3000` and `frontendDist` at `../app/dist`. `beforeDevCommand` and `beforeBuildCommand` work both from the repo root and from `src-tauri/`.
+Tauri 2 wraps the Vite app. The shell crate requires `tauri` 2.9, and `Cargo.lock` resolves that to 2.12.3. `@tauri-apps/cli` 2.12 drives it. The locked plugins are `tauri-build` 2.7.2, `tauri-plugin-dialog` 2.8.2, and `tauri-plugin-fs` 2.7.0. `src-tauri/tauri.conf.json` points `devUrl` at `http://127.0.0.1:1420` and `frontendDist` at `../app/dist`. `beforeDevCommand` and `beforeBuildCommand` set `cwd` to the repo root, so `npm run tauri:dev` and `npm run tauri:build` work from that root on macOS, Windows, and Linux. The browser preview stays on port 3000 and is not the product.
 
 The window title is `avi`. The bundle identifier is `me.csy20.avi`.
 
-Native open and save dialogs come from `tauri-plugin-dialog`. Export bytes are written with `tauri-plugin-fs`. Selected media is not copied into IndexedDB. The app allows that path on the asset protocol for the session (`allow_media_path`) and plays it through `convertFileSrc`.
+Native open and save dialogs come from `tauri-plugin-dialog`. Export bytes are written with `tauri-plugin-fs`. Selected media is not copied into IndexedDB. `allow_media_path` registers the real file for the session. Playback does not use `convertFileSrc`: WebKitGTK reports media error 4 for `asset://` video URLs. The shell instead serves only those allowed files from `127.0.0.1` with HTTP range requests, and the editor points `<video>` at that URL.
 
 `security.csp` is `null`. The editor loads Vite, WASM, Remotion media, and the Tauri asset origin. A strict CSP would block those before a dedicated policy exists. Tighten it before a public release.
 
@@ -48,4 +48,6 @@ Saved cloud JSON is still a bare `Track[]`. `projects.schema_version` is unused 
 
 ## What this host can verify
 
-`npm test` and `npm run build:app` run here. `src-tauri/Cargo.lock` is committed. `cargo check` in `src-tauri/` downloads those crates and then stops in `javascriptcore-rs-sys` because `javascriptcoregtk-4.1.pc` is missing. A Linux link needs the WebKitGTK 4.1 development packages (`libwebkit2gtk-4.1-dev`, which provides that file) plus the usual Tauri system libraries. This environment has the runtime library and not the dev headers, and `sudo` is not available, so the desktop shell cannot be linked here. macOS and Windows bundles are configured (`bundle.targets` is `all`) and have to be built on those systems. Nothing here produces signed installers.
+`npm test` passes. On this Linux machine `npm run tauri:dev` opens a native window titled **avi** and loads the editor from `http://127.0.0.1:1420`. A local H.264 file plays in that window through the loopback media server. `cargo test --lib media_server` covers range responses and the allow list.
+
+`npm run tauri:build` produced unsigned Linux bundles: `avi_0.1.0_amd64.deb`, `avi-0.1.0-1.x86_64.rpm`, and `avi_0.1.0_amd64.AppImage`. The deb depends on `libwebkit2gtk-4.1-0` and `libgtk-3-0`. The bundle step needs `patchelf`, which is in the README package list. macOS and Windows bundles are configured (`bundle.targets` is `all`) and have to be built on those systems. Nothing here is signed.

@@ -5,9 +5,15 @@
   "identifier": "me.csy20.avi",
   "build": {
     "frontendDist": "../app/dist",
-    "devUrl": "http://127.0.0.1:3000",
-    "beforeDevCommand": "sh -c 'if [ -f ../package.json ]; then npm --prefix .. run dev:app; else npm run dev:app; fi'",
-    "beforeBuildCommand": "sh -c 'if [ -f ../package.json ]; then npm --prefix .. run build:app; else npm run build:app; fi'"
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeDevCommand": {
+      "script": "npm run dev:desktop",
+      "cwd": ".."
+    },
+    "beforeBuildCommand": {
+      "script": "npm run build:desktop",
+      "cwd": ".."
+    }
   },
   "app": {
     "windows": [

@@ -1,4 +1,4 @@
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 
 export const isDesktopApp = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -39,8 +39,23 @@ export async function allowMediaPath(path: string): Promise<void> {
   await invoke('allow_media_path', { path })
 }
 
-export function desktopMediaUrl(path: string): string {
-  return convertFileSrc(path)
+let mediaBase: Promise<string> | null = null
+
+function mediaBaseUrl(): Promise<string> {
+  if (!mediaBase) {
+    mediaBase = invoke<string>('media_base_url').catch((error: unknown) => {
+      mediaBase = null
+      throw error
+    })
+  }
+  return mediaBase
+}
+
+// WebKitGTK cannot play asset:// URLs in a video element. The shell serves
+// allowed files from 127.0.0.1 instead. Call allowMediaPath before this.
+export async function desktopMediaUrl(path: string): Promise<string> {
+  const base = await mediaBaseUrl()
+  return `${base}/media?path=${encodeURIComponent(path)}`
 }
 
 export function isSupportedMediaPath(path: string, videosOnly = false): boolean {

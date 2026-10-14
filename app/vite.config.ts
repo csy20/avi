@@ -3,6 +3,8 @@ import react              from '@vitejs/plugin-react'
 import wasm               from 'vite-plugin-wasm'
 import topLevelAwait      from 'vite-plugin-top-level-await'
 
+const devPort = Number(process.env.AVI_DEV_PORT || 3000)
+
 export default defineConfig({
   plugins: [
     react(),
@@ -11,7 +13,7 @@ export default defineConfig({
   ],
   server: {
     host: '127.0.0.1',
-    port: 3000,
+    port: Number.isFinite(devPort) ? devPort : 3000,
     strictPort: true,
     watch: {
       ignored: ['**/src-tauri/**'],

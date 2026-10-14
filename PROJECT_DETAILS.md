@@ -336,7 +336,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
 ### Backend (api/.env)
 ```
 PORT=4000
-CORS_ORIGIN=http://127.0.0.1:3000
+CORS_ORIGIN=http://127.0.0.1:1420
 GEMINI_MODEL=gemini-3.6-flash
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
@@ -347,19 +347,16 @@ GEMINI_API_KEY=your_gemini_api_key
 
 ## Running the Project
 
+The supported way to run avi is the desktop app:
+
 ```bash
-# Install dependencies
-cd /path/to/avi
 npm install
-
-# Run both app and API concurrently
-npm run dev
-
-# Or run separately:
-npm run dev:app     # Frontend on http://127.0.0.1:3000
-npm run dev:api      # API on http://localhost:4000
-npm run tauri:dev    # Desktop shell
+npm run tauri:dev
 ```
+
+That opens the native window. `npm run tauri:build` produces the installable bundle for the current OS.
+
+`npm run dev` is a browser preview on http://127.0.0.1:3000 plus the optional API. The desktop window loads Vite on http://127.0.0.1:1420 instead, so it does not share that port. See the README for Rust, WebView, and wasm-pack prerequisites.
 
 ---
 
