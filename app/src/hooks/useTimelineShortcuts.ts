@@ -13,6 +13,8 @@ export const useTimelineShortcuts = () => {
   const isPromptOpen = useEditorStore((state) => state.isPromptOpen)
   const setSelection = useEditorStore((state) => state.setSelection)
   const removeClip = useEditorStore((state) => state.removeClip)
+  const rippleDeleteClip = useEditorStore((state) => state.rippleDeleteClip)
+  const moveClip = useEditorStore((state) => state.moveClip)
   const duplicateClip = useEditorStore((state) => state.duplicateClip)
   const splitClip = useEditorStore((state) => state.splitClip)
 
@@ -49,14 +51,26 @@ export const useTimelineShortcuts = () => {
         return
       }
 
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        const step = event.shiftKey ? 5 : 1
+        const delta = event.key === 'ArrowLeft' ? -step : step
+        moveClip(selectedClip.trackId, selectedClip.clipId, clip.startFrame + delta, true)
+        return
+      }
+
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault()
-        removeClip(selectedClip.trackId, selectedClip.clipId)
+        if (event.shiftKey) {
+          rippleDeleteClip(selectedClip.trackId, selectedClip.clipId)
+        } else {
+          removeClip(selectedClip.trackId, selectedClip.clipId)
+        }
         setSelection(null)
       }
     }
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [duplicateClip, isPromptOpen, removeClip, setSelection, splitClip])
+  }, [duplicateClip, isPromptOpen, moveClip, removeClip, rippleDeleteClip, setSelection, splitClip])
 }

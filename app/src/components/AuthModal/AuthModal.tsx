@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../../lib/authContext'
 import { ButtonSpinner } from '../Spinner/Spinner'
 
-export function AuthModal() {
+export function AuthModal({ onClose }: { onClose?: () => void }) {
   const { signIn, signUp, signInWithGitHub } = useAuth()
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState('')
@@ -65,7 +65,7 @@ export function AuthModal() {
           </div>
           <h2 style={styles.title}>{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
           <p style={styles.subtitle}>
-            {isSignUp ? 'Start editing videos with AI' : 'Sign in to continue editing'}
+            {isSignUp ? 'Start editing videos with AI' : 'Sign in to sync projects, or keep editing on this computer'}
           </p>
         </div>
         
@@ -213,6 +213,12 @@ export function AuthModal() {
           )}
           <span>{githubLoading ? 'Connecting...' : 'GitHub'}</span>
         </button>
+
+        {onClose && (
+          <button type="button" onClick={onClose} style={styles.localButton}>
+            Continue locally
+          </button>
+        )}
 
         <p style={styles.switchText}>
           {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
@@ -370,6 +376,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     marginTop: 24,
     marginBottom: 0,
+  },
+  localButton: {
+    width: '100%',
+    marginTop: 16,
+    padding: '12px 16px',
+    background: 'transparent',
+    border: '1px solid #333',
+    borderRadius: 8,
+    color: '#ccc',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
   },
   switchButton: {
     background: 'none',

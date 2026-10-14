@@ -4,6 +4,7 @@ import { useAuth } from '../lib/authContext'
 import { createProject, getProject, updateProjectComposition, createAutoSave } from '../lib/projectService'
 import { resolveTracksWithAssets } from '../lib/assetService'
 import { normalizeTimeline, repairTracks } from '../lib/clipValidation'
+import { LOCAL_PROJECT_ID, readLocalProject, writeLocalProject } from '../lib/localProject'
 import { toast } from '../lib/toastStore'
 
 export function useProjectManager() {
@@ -27,6 +28,58 @@ export function useProjectManager() {
     projectIdRef.current = id
     setProjectId(id)
   }, [])
+
+  const finishReady = useCallback((id: string) => {
+    updateProjectId(id)
+    setHasUnsavedChanges(false)
+    setProjectStatus('ready')
+    isInitialized.current = true
+  }, [updateProjectId])
+
+  const initializeLocal = useCallback(async (cancelled: { value: boolean }) => {
+    if (initInFlightRef.current) return
+    initInFlightRef.current = true
+    isInitializingRef.current = true
+    isInitialized.current = false
+    setProjectStatus('loading')
+    setProjectError(null)
+
+    try {
+      const saved = readLocalProject()
+      const editorState = useEditorStore.getState()
+      const fpsValue = saved?.fps ?? editorState.fps
+      const resolvedTracks = await resolveTracksWithAssets(saved?.tracks ?? [], fpsValue)
+      if (cancelled.value) return
+
+      const repairedTimeline = repairTracks(resolvedTracks)
+      const normalizedTimeline = normalizeTimeline(repairedTimeline.tracks)
+      finishReady(LOCAL_PROJECT_ID)
+      hydrateProject({
+        tracks: normalizedTimeline.tracks,
+        totalFrames: Math.max(0, (saved?.totalFrames ?? editorState.totalFrames) - normalizedTimeline.offsetFrames),
+        fps: fpsValue,
+      })
+
+      const missingCount = normalizedTimeline.tracks
+        .flatMap((track) => track.clips)
+        .filter((clip) => clip.assetId && clip.isMissingAsset)
+        .length
+      if (missingCount > 0) {
+        toast.warning(`${missingCount} media file${missingCount === 1 ? '' : 's'} missing from local storage. Re-import from Assets to restore playback.`)
+      }
+    } catch (error) {
+      console.error('Local project load failed:', error)
+      if (!cancelled.value) {
+        setProjectError(error instanceof Error ? error.message : 'local project load failed')
+        setProjectStatus('error')
+      }
+    } finally {
+      initInFlightRef.current = false
+      if (!cancelled.value) {
+        isInitializingRef.current = false
+      }
+    }
+  }, [finishReady, hydrateProject])
 
   const initializeProject = useCallback(async (cancelled: { value: boolean }) => {
     if (initInFlightRef.current) return
@@ -62,6 +115,17 @@ export function useProjectManager() {
     }
 
     try {
+      const editorState = useEditorStore.getState()
+      const hasLocalTimeline = editorState.compositionTree.some((track) => track.clips.length > 0)
+      if (projectIdRef.current === LOCAL_PROJECT_ID && hasLocalTimeline) {
+        await createFreshProject({
+          compositionTree: editorState.compositionTree,
+          totalFrames: editorState.totalFrames,
+          fps: editorState.fps,
+        })
+        return
+      }
+
       const savedProjectId = localStorage.getItem('currentProjectId')
 
       if (!savedProjectId) {
@@ -139,28 +203,41 @@ export function useProjectManager() {
   }, [user, hydrateProject, updateProjectId])
 
   useEffect(() => {
-    if (!user || authLoading) return
+    if (authLoading) return
 
     const cancelled = { value: false }
-    initializeProject(cancelled)
+    if (user) {
+      void initializeProject(cancelled)
+    } else {
+      void initializeLocal(cancelled)
+    }
 
     return () => {
       cancelled.value = true
     }
-  }, [user, authLoading, initializeProject])
+  }, [user, authLoading, initializeProject, initializeLocal])
 
   const retryProjectInit = useCallback(async () => {
-    if (!user) return
-    initInFlightRef.current = false // reset guard so retry can run
+    initInFlightRef.current = false
     const cancelled = { value: false }
+    if (!user) {
+      await initializeLocal(cancelled)
+      return
+    }
     await initializeProject(cancelled)
-  }, [user, initializeProject])
+  }, [user, initializeLocal, initializeProject])
 
   useEffect(() => {
-    if (!user || !projectIdRef.current || isInitializingRef.current) return
+    if (authLoading || !projectIdRef.current || isInitializingRef.current) return
 
     if (!isInitialized.current) {
       isInitialized.current = true
+      return
+    }
+
+    if (!user) {
+      writeLocalProject({ tracks: compositionTree, totalFrames, fps })
+      setHasUnsavedChanges(false)
       return
     }
 
@@ -175,10 +252,21 @@ export function useProjectManager() {
     })
 
     setHasUnsavedChanges(true)
-  }, [compositionTree, totalFrames, fps, user])
+  }, [authLoading, compositionTree, totalFrames, fps, user])
 
   const forceSave = useCallback(async () => {
-    if (!projectIdRef.current || !user) return
+    if (!user) {
+      const state = useEditorStore.getState()
+      writeLocalProject({
+        tracks: state.compositionTree,
+        totalFrames: state.totalFrames,
+        fps: state.fps,
+      })
+      setHasUnsavedChanges(false)
+      return
+    }
+
+    if (!projectIdRef.current) return
 
     await autoSaveRef.current.flush()
     setHasUnsavedChanges(false)

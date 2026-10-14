@@ -10,9 +10,13 @@
     "dev:api": "npm --workspace=api run dev",
     "dev": "concurrently \"npm run dev:app\" \"npm run dev:api\"",
     "build:app": "npm --workspace=app run build",
-    "build:api": "npm --workspace=api run build"
+    "build:api": "npm --workspace=api run build",
+    "test": "node --experimental-strip-types --test app/src/lib/*.test.ts",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.2",
     "concurrently": "^8.2.2"
   },
   "dependencies": {

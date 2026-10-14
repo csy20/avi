@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
-import { uploadAsset } from '../../lib/assetService'
+import { importLocalPath, schedulePlaybackProxy, uploadAsset } from '../../lib/assetService'
+import { isDesktopApp, pickMediaPaths } from '../../lib/desktop'
 import { useProjectManager } from '../../hooks/useProjectManager'
 import { toast } from '../../lib/toastStore'
 import { ButtonSpinner } from '../Spinner/Spinner'
@@ -35,6 +36,7 @@ export const AssetUpload: React.FC<AssetUploadProps> = ({ onUploadComplete }) =>
 
       toast.success(`"${file.name}" uploaded successfully!`)
       
+      window.dispatchEvent(new Event('avi:assets-changed'))
       if (onUploadComplete) {
         onUploadComplete(asset.playback_url, asset.id)
       }
@@ -62,7 +64,32 @@ export const AssetUpload: React.FC<AssetUploadProps> = ({ onUploadComplete }) =>
       />
       
       <button
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => {
+          if (!projectId) {
+            toast.warning('Project is still initializing. Try again in a moment.')
+            return
+          }
+          if (!isDesktopApp()) {
+            fileInputRef.current?.click()
+            return
+          }
+
+          setUploading(true)
+          void pickMediaPaths(false)
+            .then(async (paths) => {
+              for (const path of paths) {
+                const asset = await importLocalPath(path, projectId)
+                toast.success(`"${asset.name}" imported`)
+                void schedulePlaybackProxy(asset).catch(() => undefined)
+                window.dispatchEvent(new Event('avi:assets-changed'))
+                onUploadComplete?.(asset.playback_url, asset.id)
+              }
+            })
+            .catch((error: unknown) => {
+              toast.error(error instanceof Error ? error.message : 'Failed to import media')
+            })
+            .finally(() => setUploading(false))
+        }}
         disabled={uploading}
         style={{
           ...styles.button,
@@ -91,7 +118,7 @@ export const AssetUpload: React.FC<AssetUploadProps> = ({ onUploadComplete }) =>
       )}
 
       <div style={styles.hint}>
-        Supports video, audio, and image files (max 50MB)
+        {isDesktopApp() ? 'Opens files from this computer. Nothing is uploaded.' : 'Supports video, audio, and image files (max 50MB)'}
       </div>
     </div>
   )

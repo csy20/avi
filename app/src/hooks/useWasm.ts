@@ -5,6 +5,7 @@ import type {
   brightness      as BrightnessFn,
   sepia           as SepiaFn,
   frame_luma_stats as FrameLumaStatsFn,
+  color_matrix as ColorMatrixFn,
 } from '../wasm-pkg/avi_wasm'
 
 // ── Public API surface exposed by the WASM module ────────────────────────────
@@ -13,6 +14,7 @@ export interface WasmApi {
   invert:           typeof InvertFn
   brightness:       typeof BrightnessFn
   sepia:            typeof SepiaFn
+  color_matrix:     typeof ColorMatrixFn
   frame_luma_stats: typeof FrameLumaStatsFn
 }
 
@@ -50,7 +52,7 @@ const wrapWasmCall = <TArgs extends readonly unknown[], TResult>(
 let cachedWasmApi: WasmApi | null = null
 let wasmInitPromise: Promise<WasmApi> | null = null
 
-const loadWasmApi = async (): Promise<WasmApi> => {
+export const loadWasmApi = async (): Promise<WasmApi> => {
   if (cachedWasmApi) {
     return cachedWasmApi
   }
@@ -69,6 +71,7 @@ const loadWasmApi = async (): Promise<WasmApi> => {
         invert: wrapWasmCall(mod.invert),
         brightness: wrapWasmCall(mod.brightness),
         sepia: wrapWasmCall(mod.sepia),
+        color_matrix: wrapWasmCall(mod.color_matrix),
         frame_luma_stats: wrapWasmCall(mod.frame_luma_stats),
       }
 

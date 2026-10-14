@@ -1,10 +1,19 @@
 import { hasMissingRenderableMedia, hasUsableVideoClips } from './editorUtils'
+import { applyPixelFilter } from './pixelFilter'
 import { type Clip, type Track } from '../store/useEditorStore'
+
+export const EXPORT_PRESETS = {
+  '720p': { width: 1280, height: 720, videoBitsPerSecond: 5_000_000 },
+  '1080p': { width: 1920, height: 1080, videoBitsPerSecond: 8_000_000 },
+} as const
+
+export type ExportPresetName = keyof typeof EXPORT_PRESETS
 
 interface ExportVideoOptions {
   tracks: Track[]
   fps: number
   totalFrames: number
+  preset?: ExportPresetName
   onProgress?: (progress: number) => void
 }
 
@@ -36,9 +45,6 @@ type MediaResource =
       kind: 'text'
       clip: Clip
     }
-
-const EXPORT_WIDTH = 1280
-const EXPORT_HEIGHT = 720
 
 const getSupportedMimeType = () => {
   const candidates = [
@@ -181,7 +187,7 @@ const drawCover = (
   context.drawImage(source, x, y, drawWidth, drawHeight)
 }
 
-const drawTextClip = (context: CanvasRenderingContext2D, clip: Clip) => {
+const drawTextClip = (context: CanvasRenderingContext2D, clip: Clip, width: number, height: number) => {
   context.save()
   context.fillStyle = clip.fontColor || '#ffffff'
   context.font = `800 ${clip.fontSize || 56}px system-ui`
@@ -189,8 +195,34 @@ const drawTextClip = (context: CanvasRenderingContext2D, clip: Clip) => {
   context.textBaseline = 'middle'
   context.shadowColor = 'rgba(0,0,0,0.55)'
   context.shadowBlur = 24
-  context.fillText(clip.text || '', EXPORT_WIDTH / 2, EXPORT_HEIGHT / 2, EXPORT_WIDTH - 120)
+  context.fillText(clip.text || '', width / 2, height / 2, width - 120)
   context.restore()
+}
+
+const paintFilteredSource = async (
+  context: CanvasRenderingContext2D,
+  scratch: CanvasRenderingContext2D,
+  scratchCanvas: HTMLCanvasElement,
+  source: CanvasImageSource,
+  clip: Clip,
+  width: number,
+  height: number
+) => {
+  scratch.clearRect(0, 0, width, height)
+  drawCover(scratch, source, width, height)
+
+  if (clip.pixelFilter) {
+    try {
+      const image = scratch.getImageData(0, 0, width, height)
+      const filtered = await applyPixelFilter(new Uint8Array(image.data), clip.pixelFilter)
+      image.data.set(filtered)
+      scratch.putImageData(image, 0, 0)
+    } catch (error) {
+      console.warn('Pixel filter skipped for an export frame', error)
+    }
+  }
+
+  context.drawImage(scratchCanvas, 0, 0)
 }
 
 const getClipFrameOffset = (clip: Clip, elapsedFrames: number) => {
@@ -202,8 +234,10 @@ export async function exportEditedVideo({
   tracks,
   fps,
   totalFrames,
+  preset = '720p',
   onProgress,
 }: ExportVideoOptions): Promise<ExportResult> {
+  const { width, height, videoBitsPerSecond } = EXPORT_PRESETS[preset]
   if (!hasUsableVideoClips(tracks)) {
     throw new Error('Upload a video to the timeline before exporting')
   }
@@ -222,10 +256,14 @@ export async function exportEditedVideo({
   }
 
   const canvas = document.createElement('canvas')
-  canvas.width = EXPORT_WIDTH
-  canvas.height = EXPORT_HEIGHT
+  canvas.width = width
+  canvas.height = height
   const context = canvas.getContext('2d')
-  if (!context) {
+  const scratchCanvas = document.createElement('canvas')
+  scratchCanvas.width = width
+  scratchCanvas.height = height
+  const scratch = scratchCanvas.getContext('2d', { willReadFrequently: true })
+  if (!context || !scratch) {
     throw new Error('Failed to create an export canvas')
   }
 
@@ -243,7 +281,7 @@ export async function exportEditedVideo({
   const chunks: BlobPart[] = []
   const recorder = new MediaRecorder(exportStream, {
     mimeType,
-    videoBitsPerSecond: 8_000_000,
+    videoBitsPerSecond,
   })
 
   recorder.ondataavailable = (event) => {
@@ -309,9 +347,9 @@ export async function exportEditedVideo({
     const elapsedMs = performance.now() - startTime
     const elapsedFrames = Math.min(totalFrames - 1, Math.max(0, Math.floor((elapsedMs / 1000) * fps)))
 
-    context.clearRect(0, 0, EXPORT_WIDTH, EXPORT_HEIGHT)
+    context.clearRect(0, 0, width, height)
     context.fillStyle = '#0e0e0e'
-    context.fillRect(0, 0, EXPORT_WIDTH, EXPORT_HEIGHT)
+    context.fillRect(0, 0, width, height)
 
     for (const resource of resources) {
       if ('element' in resource) {
@@ -325,15 +363,15 @@ export async function exportEditedVideo({
       context.globalAlpha = resource.clip.opacity ?? 1
 
       if (resource.kind === 'image') {
-        drawCover(context, resource.image, EXPORT_WIDTH, EXPORT_HEIGHT)
+        await paintFilteredSource(context, scratch, scratchCanvas, resource.image, resource.clip, width, height)
       }
 
       if (resource.kind === 'video' && resource.element.readyState >= 2) {
-        drawCover(context, resource.element, EXPORT_WIDTH, EXPORT_HEIGHT)
+        await paintFilteredSource(context, scratch, scratchCanvas, resource.element, resource.clip, width, height)
       }
 
       if (resource.kind === 'text') {
-        drawTextClip(context, resource.clip)
+        drawTextClip(context, resource.clip, width, height)
       }
 
       context.restore()

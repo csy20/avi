@@ -1,4 +1,11 @@
 import { supabase } from '../lib/supabaseClient'
+
+function cloud() {
+  if (!supabase) {
+    throw new Error('Cloud sync is not configured')
+  }
+  return supabase
+}
 import { Track } from '../store/useEditorStore'
 import { deleteProjectAssets } from './assetService'
 
@@ -42,7 +49,7 @@ export interface CreateProjectData {
 
 // Create a new project
 export async function createProject(data: CreateProjectData): Promise<Project> {
-  const { data: project, error } = await supabase
+  const { data: project, error } = await cloud()
     .from('projects')
     .insert({
       name: data.name || 'Untitled Project',
@@ -68,7 +75,7 @@ export async function createProject(data: CreateProjectData): Promise<Project> {
 
 // Get all projects for the current user
 export async function getProjects(): Promise<Project[]> {
-  const { data: projects, error } = await supabase
+  const { data: projects, error } = await cloud()
     .from('projects')
     .select('*')
     .order('updated_at', { ascending: false })
@@ -83,7 +90,7 @@ export async function getProjects(): Promise<Project[]> {
 
 // Get a single project by ID
 export async function getProject(id: string): Promise<Project | null> {
-  const { data: project, error } = await supabase
+  const { data: project, error } = await cloud()
     .from('projects')
     .select('*')
     .eq('id', id)
@@ -115,7 +122,7 @@ export async function updateProjectComposition(
   if (totalFrames !== undefined) updates.total_frames = totalFrames
   if (fps !== undefined) updates.fps = fps
 
-  const { error } = await supabase
+  const { error } = await cloud()
     .from('projects')
     .update(updates)
     .eq('id', projectId)
@@ -131,7 +138,7 @@ export async function updateProjectMetadata(
   projectId: string,
   data: Partial<Pick<Project, 'name' | 'description' | 'thumbnail_url'>>
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await cloud()
     .from('projects')
     .update(data)
     .eq('id', projectId)
@@ -144,7 +151,7 @@ export async function updateProjectMetadata(
 
 // Delete a project
 export async function deleteProject(projectId: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await cloud()
     .from('projects')
     .delete()
     .eq('id', projectId)

@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { type AuthError, type Session, type User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabaseClient'
 
+const unavailable = (message: string) => ({ message }) as AuthError
+
 interface AuthContextType {
   user: User | null
   session: Session | null
@@ -33,10 +35,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       applySession(null)
     }
 
+    if (!supabase) {
+      applySession(null)
+      return
+    }
+
+    const client = supabase
+
     // Get initial session
     ;(async () => {
       try {
-        const { data, error } = await supabase.auth.getSession()
+        const { data, error } = await client.auth.getSession()
         if (error) {
           clearToLogin(error)
           return
@@ -48,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })()
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    const { data: { subscription } } = client.auth.onAuthStateChange((event, nextSession) => {
       if (event === 'TOKEN_REFRESHED' && !nextSession) {
         clearToLogin(new Error('Token refresh returned an empty session'))
         return
@@ -64,11 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signIn = async (email: string, password: string) => {
+    if (!supabase) return { error: unavailable('Cloud sign-in is not configured') }
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     return { error }
   }
 
   const signUp = async (email: string, password: string, fullName?: string) => {
+    if (!supabase) return { error: unavailable('Cloud sign-in is not configured') }
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -80,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signInWithGitHub = async () => {
+    if (!supabase) return { error: unavailable('Cloud sign-in is not configured') }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
@@ -90,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
+    if (!supabase) return
     const { error } = await supabase.auth.signOut()
     if (error) throw error
   }

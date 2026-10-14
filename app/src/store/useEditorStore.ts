@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { validateClip } from '../lib/clipValidation'
+import type { PixelFilterName } from '../lib/pixelFilter'
+import { movedClipRange, rippleDelete } from '../lib/timelineEdit'
 
 export interface Clip {
   id: string
@@ -16,6 +18,8 @@ export interface Clip {
   mediaEnd?: number
   mediaDurationFrames?: number
   opacity?: number
+  pixelFilter?: PixelFilterName
+  previewUrl?: string
   text?: string
   fontSize?: number
   fontColor?: string
@@ -46,6 +50,7 @@ interface AssetClipInput {
   mediaType: 'video' | 'audio' | 'image'
   label: string
   durationFrames: number
+  previewUrl?: string
 }
 
 interface HydratedProjectState {
@@ -103,6 +108,10 @@ interface EditorStore {
   replaceClipAsset: (trackId: string, clipId: string, asset: AssetClipInput) => void
   splitClip: (trackId: string, clipId: string, splitFrame: number) => boolean
   trimClip: (trackId: string, clipId: string, newStart: number, newEnd: number) => void
+  moveClip: (trackId: string, clipId: string, newStart: number, commit?: boolean) => void
+  rippleDeleteClip: (trackId: string, clipId: string) => void
+  setClipPixelFilter: (trackId: string, clipId: string, filter: PixelFilterName | null) => void
+  setAssetPreviewUrl: (assetId: string, previewUrl: string) => void
   duplicateClip: (trackId: string, clipId: string) => void
   removeAssetClips: (assetId: string) => void
   cleanMissingClips: () => void
@@ -413,6 +422,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         mediaEnd: asset.durationFrames - 1,
         mediaDurationFrames: asset.durationFrames,
         opacity: 1,
+        previewUrl: asset.previewUrl,
         isMissingAsset: false,
         status: 'ready',
       }
@@ -448,6 +458,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         mediaEnd: asset.durationFrames - 1,
         mediaDurationFrames: asset.durationFrames,
         opacity: 1,
+        previewUrl: asset.previewUrl,
         isMissingAsset: false,
         status: 'ready',
       }
@@ -578,6 +589,71 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
     return true
   },
+
+  moveClip: (trackId, clipId, newStart, commit = false) =>
+    set((state) => {
+      const nextTree = state.compositionTree.map((track) => {
+        if (track.id !== trackId) return track
+        return {
+          ...track,
+          clips: track.clips.map((clip) => {
+            if (clip.id !== clipId) return clip
+            const range = movedClipRange(clip.startFrame, clip.endFrame, newStart)
+            return { ...clip, ...range }
+          }),
+        }
+      })
+
+      return commit
+        ? applyCommittedTree(state, nextTree, { selectedClip: { trackId, clipId } })
+        : applyLiveTree(state, nextTree, { selectedClip: { trackId, clipId } })
+    }),
+
+  rippleDeleteClip: (trackId, clipId) =>
+    set((state) =>
+      applyCommittedTree(
+        state,
+        state.compositionTree.map((track) =>
+          track.id === trackId ? { ...track, clips: rippleDelete(track.clips, clipId) } : track
+        ),
+        {
+          selectedClip:
+            state.selectedClip?.trackId === trackId && state.selectedClip.clipId === clipId
+              ? null
+              : state.selectedClip,
+        }
+      )
+    ),
+
+  setClipPixelFilter: (trackId, clipId, filter) =>
+    set((state) =>
+      applyCommittedTree(
+        state,
+        state.compositionTree.map((track) =>
+          track.id === trackId
+            ? {
+                ...track,
+                clips: track.clips.map((clip) =>
+                  clip.id === clipId
+                    ? { ...clip, pixelFilter: filter ?? undefined }
+                    : clip
+                ),
+              }
+            : track
+        ),
+        { selectedClip: { trackId, clipId } }
+      )
+    ),
+
+  setAssetPreviewUrl: (assetId, previewUrl) =>
+    set((state) => ({
+      compositionTree: state.compositionTree.map((track) => ({
+        ...track,
+        clips: track.clips.map((clip) =>
+          clip.assetId === assetId ? { ...clip, previewUrl } : clip
+        ),
+      })),
+    })),
 
   trimClip: (trackId, clipId, newStart, newEnd) =>
     set((state) =>

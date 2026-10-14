@@ -9,9 +9,9 @@
 1. **Timeline-Based Editing** - Multi-track timeline for video, audio, and overlay tracks
 2. **AI Prompt Integration** - Use natural language prompts to edit video compositions via Gemini AI
 3. **WebAssembly Processing** - Client-side video processing using WebAssembly (Rust-compiled)
-4. **Cloud Storage** - Supabase backend for authentication and project persistence
-5. **Video Export** - Export edited videos using Remotion rendering pipeline
-6. **Asset Library** - Upload and manage media assets with local IndexedDB caching
+4. **Optional cloud sync** - Supabase auth and project persistence when configured. The editor runs offline without it
+5. **Video Export** - Client-side WebM export through MediaRecorder, with 720p and 1080p presets
+6. **Asset Library** - Browser uploads in IndexedDB, or native file references in the Tauri app
 
 ---
 
@@ -37,6 +37,7 @@ avi/
 │   │   └── middleware/   # Express middleware
 │   └── package.json
 │
+├── src-tauri/             # Tauri 2 desktop shell
 └── package.json           # Root workspace configuration
 ```
 
@@ -47,11 +48,13 @@ avi/
 | Frontend Framework | React 18 |
 | Build Tool | Vite |
 | State Management | Zustand |
-| Video Rendering | Remotion |
+| Preview | Remotion Player |
+| Export | Canvas + MediaRecorder (WebM) |
+| Desktop | Tauri 2 |
 | WebAssembly | Rust (wasm-pack) |
-| Backend | Express.js |
-| Database/Auth | Supabase |
-| AI Integration | Google Gemini API |
+| Backend | Express.js (optional) |
+| Database/Auth | Supabase (optional) |
+| AI Integration | Gemini when configured, local heuristics otherwise |
 | Validation | Zod |
 
 ---
@@ -199,6 +202,7 @@ When Gemini API is unavailable, the fallback provides:
 - Opacity adjustments
 - Clip splitting at midpoint
 - Text overlay addition
+- Pixel filters: grayscale, sepia, invert, brightness, warm
 
 ### Authentication Middleware
 
@@ -213,10 +217,11 @@ Uses JWT validation via `express-jwt` and JWKS from Supabase:
 
 ### `videoExportService.ts`
 
-Handles video export using Remotion:
-- Composites tracks into final video
-- Progress callback for UI feedback
-- Downloads as MP4/WebM
+Handles client-side video export:
+- Composites tracks onto a canvas in realtime
+- Applies WASM pixel filters when the frame can be read
+- Records WebM with MediaRecorder at 720p or 1080p
+- Saves through a native dialog in the desktop app, or a browser download on the web
 
 ### `clipValidation.ts`
 
@@ -234,7 +239,7 @@ Supabase project CRUD:
 
 ### `supabaseClient.ts`
 
-Supabase client configuration with environment variables
+Creates a Supabase client only when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set. Otherwise the editor stays local.
 
 ---
 
@@ -331,7 +336,8 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
 ### Backend (api/.env)
 ```
 PORT=4000
-CORS_ORIGIN=http://localhost:5173
+CORS_ORIGIN=http://127.0.0.1:3000
+GEMINI_MODEL=gemini-3.6-flash
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 GEMINI_API_KEY=your_gemini_api_key
@@ -350,8 +356,9 @@ npm install
 npm run dev
 
 # Or run separately:
-npm run dev:app     # Frontend on http://localhost:5173
+npm run dev:app     # Frontend on http://127.0.0.1:3000
 npm run dev:api      # API on http://localhost:4000
+npm run tauri:dev    # Desktop shell
 ```
 
 ---
@@ -371,9 +378,10 @@ The codebase references several bug fixes (marked as FIX: comments):
 avi is a local-first video editor that combines:
 1. **Modern React frontend** with Vite for fast development
 2. **Zustand state management** for complex timeline editing
-3. **Remotion** for video rendering and preview
-4. **WebAssembly** for client-side processing
-5. **Supabase** for auth and project persistence
-6. **Gemini AI** for intelligent video editing via prompts
+3. **Remotion Player** for preview and a MediaRecorder WebM export
+4. **WebAssembly** for client-side pixel filters
+5. **Tauri 2** for the macOS, Windows, and Linux app
+6. **Optional Supabase** for auth and project sync
+7. **Optional Gemini**, with local keyword edits when the model is unavailable
 
-The architecture supports offline editing with IndexedDB, real-time preview, AI-assisted editing, and professional-grade video export capabilities.
+The editor works offline. IndexedDB holds browser-uploaded media. The desktop app references files on disk. See `ARCHITECTURE.md` for the decisions behind the shell, proxies, and AI fallback.

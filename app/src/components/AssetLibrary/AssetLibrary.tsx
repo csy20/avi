@@ -4,8 +4,10 @@ import {
   uploadAsset,
   getProjectAssets,
   deleteAsset,
+  importMediaPaths,
   type Asset,
 } from '../../lib/assetService'
+import { isDesktopApp, pickMediaPaths } from '../../lib/desktop'
 import { toast } from '../../lib/toastStore'
 import { Spinner } from '../Spinner/Spinner'
 
@@ -57,6 +59,41 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({ projectId }) => {
   useEffect(() => {
     loadAssets()
   }, [loadAssets])
+
+  useEffect(() => {
+    const refresh = () => {
+      void loadAssets()
+    }
+    window.addEventListener('avi:assets-changed', refresh)
+    return () => window.removeEventListener('avi:assets-changed', refresh)
+  }, [loadAssets])
+
+  const importDesktopPaths = async (paths: string[]) => {
+    if (!projectId) {
+      toast.error('No project available. Please wait for project to initialize.')
+      return
+    }
+    if (paths.length === 0) return
+
+    setUploading(true)
+    try {
+      const imported = await importMediaPaths(paths, projectId)
+      if (imported.length === 0) {
+        toast.error('Choose a video, audio, or image file.')
+        return
+      }
+      setAssets((prev) => {
+        const ids = new Set(imported.map((asset) => asset.id))
+        return [...imported, ...prev.filter((asset) => !ids.has(asset.id))]
+      })
+      toast.success(imported.length === 1 ? `${imported[0].name} imported` : `${imported.length} files imported`)
+    } catch (err) {
+      console.error('Import failed:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to import file. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   // ── Upload handler ───────────────────────────────────────────────────────
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,6 +165,7 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({ projectId }) => {
       mediaType: asset.file_type as 'video' | 'audio' | 'image',
       label: asset.name,
       durationFrames,
+      previewUrl: asset.preview_url ?? undefined,
     })
 
     toast.success(`Added "${asset.name}" to timeline`)
@@ -187,7 +225,15 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({ projectId }) => {
               toast.warning('Waiting for project to initialize...')
               return
             }
-            fileInputRef.current?.click()
+            if (!isDesktopApp()) {
+              fileInputRef.current?.click()
+              return
+            }
+            void pickMediaPaths(false)
+              .then((paths) => importDesktopPaths(paths))
+              .catch((err: unknown) => {
+                toast.error(err instanceof Error ? err.message : 'Failed to open files')
+              })
           }}
           disabled={uploading}
           style={{
@@ -202,7 +248,7 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({ projectId }) => {
             opacity: uploading ? 0.5 : 1,
           }}
         >
-          {uploading ? 'Uploading...' : '+ Upload'}
+          {uploading ? 'Importing...' : isDesktopApp() ? '+ Import' : '+ Upload'}
         </button>
         <input
           ref={fileInputRef}
@@ -235,7 +281,7 @@ export const AssetLibrary: React.FC<AssetLibraryProps> = ({ projectId }) => {
             <div style={{ fontSize: 28, marginBottom: 12 }}>📂</div>
             <div>No assets yet</div>
             <div style={{ marginTop: 6, color: '#444', fontSize: 11 }}>
-              Upload videos, audio, or images to get started
+              {isDesktopApp() ? 'Import videos, audio, or images from this computer' : 'Upload videos, audio, or images to get started'}
             </div>
           </div>
         )}

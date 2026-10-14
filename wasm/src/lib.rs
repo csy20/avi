@@ -109,3 +109,40 @@ pub fn sepia(mut pixels: Vec<u8>) -> Result<Vec<u8>, JsValue> {
     }
     Ok(pixels)
 }
+
+// ── Color matrix ──────────────────────────────────────────────────────────────
+/// Apply a row-major 4×5 color matrix to RGBA pixels.
+/// Channels are converted to 0–1, multiplied, then scaled back to bytes.
+/// `matrix` must contain 20 floats: four rows of `[r, g, b, a, offset]`.
+#[wasm_bindgen]
+pub fn color_matrix(mut pixels: Vec<u8>, matrix: &[f32]) -> Result<Vec<u8>, JsValue> {
+    if pixels.len() % 4 != 0 {
+        return Err(JsValue::from_str("pixel buffer length must be a multiple of 4 (RGBA)"));
+    }
+    if matrix.len() != 20 {
+        return Err(JsValue::from_str("color matrix must contain 20 floats"));
+    }
+
+    for chunk in pixels.chunks_exact_mut(4) {
+        let r = chunk[0] as f32 / 255.0;
+        let g = chunk[1] as f32 / 255.0;
+        let b = chunk[2] as f32 / 255.0;
+        let a = chunk[3] as f32 / 255.0;
+
+        let next = |row: usize| {
+            let index = row * 5;
+            matrix[index] * r
+                + matrix[index + 1] * g
+                + matrix[index + 2] * b
+                + matrix[index + 3] * a
+                + matrix[index + 4]
+        };
+
+        chunk[0] = (next(0) * 255.0).round().clamp(0.0, 255.0) as u8;
+        chunk[1] = (next(1) * 255.0).round().clamp(0.0, 255.0) as u8;
+        chunk[2] = (next(2) * 255.0).round().clamp(0.0, 255.0) as u8;
+        chunk[3] = (next(3) * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
+
+    Ok(pixels)
+}

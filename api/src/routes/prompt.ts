@@ -19,6 +19,7 @@ interface Clip {
   mediaEnd?: number
   mediaDurationFrames?: number
   opacity?: number
+  pixelFilter?: 'grayscale' | 'sepia' | 'invert' | 'brightness' | 'warm'
   text?: string
   fontSize?: number
   fontColor?: string
@@ -69,6 +70,7 @@ const ClipSchema = z.object({
   mediaEnd: NonNegativeInt.optional(),
   mediaDurationFrames: NonNegativeInt.optional(),
   opacity: z.number().min(0).max(1).optional(),
+  pixelFilter: z.enum(['grayscale', 'sepia', 'invert', 'brightness', 'warm']).optional(),
   text: z.string().optional(),
   fontSize: NonNegativeInt.optional(),
   fontColor: z.string().optional(),
@@ -149,8 +151,9 @@ function getGeminiApiKey(): string {
 async function callGeminiAPI(contextInstructions: string, userPrompt: string): Promise<string> {
   const geminiApiKey = getGeminiApiKey()
 
+  const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash'
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`,
     {
       method: 'POST',
       headers: {
@@ -265,6 +268,23 @@ function mockLLM(body: PromptBody): { tracks: Track[]; explanation: string } {
         changes.push(`Set "${c.label}" opacity to 50%`)
       }
 
+      if (p.includes('grayscale') || p.includes('greyscale') || p.includes('black and white')) {
+        c.pixelFilter = 'grayscale'
+        changes.push(`Applied grayscale to "${c.label}"`)
+      } else if (p.includes('sepia')) {
+        c.pixelFilter = 'sepia'
+        changes.push(`Applied sepia to "${c.label}"`)
+      } else if (p.includes('invert')) {
+        c.pixelFilter = 'invert'
+        changes.push(`Inverted "${c.label}"`)
+      } else if (p.includes('bright')) {
+        c.pixelFilter = 'brightness'
+        changes.push(`Raised brightness on "${c.label}"`)
+      } else if (p.includes('warm')) {
+        c.pixelFilter = 'warm'
+        changes.push(`Applied a warm grade to "${c.label}"`)
+      }
+
       return c
     }),
   }))
@@ -284,26 +304,26 @@ function mockLLM(body: PromptBody): { tracks: Track[]; explanation: string } {
           continue
         }
 
-        const mid = Math.floor((clip.startFrame + clip.endFrame) / 2)
+        const splitFrame = Math.floor((clip.startFrame + clip.endFrame) / 2) + 1
         const mediaMid = clip.mediaStart != null
-          ? clip.mediaStart + (mid - clip.startFrame)
+          ? clip.mediaStart + (splitFrame - clip.startFrame)
           : undefined
 
         const left: Clip = {
           ...clip,
-          endFrame: mid - 1,
+          endFrame: splitFrame - 1,
           mediaEnd: mediaMid != null ? mediaMid - 1 : clip.mediaEnd,
           label: clip.label + ' (L)',
         }
         const right: Clip = {
           ...clip,
           id: `clip-split-${randomUUID()}`,
-          startFrame: mid,
+          startFrame: splitFrame,
           mediaStart: mediaMid ?? clip.mediaStart,
           label: clip.label + ' (R)',
         }
         newClips.push(left, right)
-        changes.push(`Split "${clip.label}" at frame ${mid}`)
+        changes.push(`Split "${clip.label}" at frame ${splitFrame}`)
       }
       return { ...track, clips: newClips }
     })
@@ -424,33 +444,25 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       JSON.stringify(body.compositionContext, null, 2),
     ].join('\n')
 
-    let explanation = `AI applied your prompt: "${body.prompt}"`
+    let explanation = `Applied your prompt: "${body.prompt}"`
     let modifiedComposition: Composition
 
-    const geminiResponse = await callGeminiAPI(contextInstructions, body.prompt)
-
     try {
+      const geminiResponse = await callGeminiAPI(contextInstructions, body.prompt)
       const cleanedResponse = geminiResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
       const parsedResponse = JSON.parse(cleanedResponse) as unknown
-
-      if (!isValidComposition(parsedResponse)) {
-        res.status(422).json({ error: 'AI returned unexpected composition format' })
-        return
-      }
-
       const validation = CompositionSchema.safeParse(parsedResponse)
 
-      if (!validation.success) {
-        console.warn('Gemini response failed schema validation', validation.error.flatten())
-        res.status(422).json({ error: 'AI returned unexpected composition format' })
-        return
+      if (!isValidComposition(parsedResponse) || !validation.success) {
+        throw new Error('Gemini returned an unexpected composition')
       }
 
       modifiedComposition = validation.data
     } catch (parseError) {
-      console.warn('Failed to parse Gemini response', parseError)
-      res.status(422).json({ error: 'AI returned unexpected composition format' })
-      return
+      console.warn('Gemini unavailable or returned an unusable composition', parseError)
+      const fallback = buildFallbackComposition(body)
+      explanation = `${fallback.explanation} (local fallback)`
+      modifiedComposition = fallback.modifiedComposition
     }
 
     res.json({

@@ -14,10 +14,13 @@ import { useGhostPreviewKeys } from './hooks/useGhostPreviewKeys'
 import { useProjectManager } from './hooks/useProjectManager'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { useTimelineShortcuts } from './hooks/useTimelineShortcuts'
+import { useDesktopFileDrop } from './hooks/useDesktopFileDrop'
 import { useAuth } from './lib/authContext'
+import { saveExportFile } from './lib/desktop'
+import { writeLocalProject } from './lib/localProject'
 import { useEditorStore }      from './store/useEditorStore'
 import { toast } from './lib/toastStore'
-import { exportEditedVideo } from './lib/videoExportService'
+import { EXPORT_PRESETS, exportEditedVideo, type ExportPresetName } from './lib/videoExportService'
 import { hasMissingRenderableMedia, hasUsableVideoClips } from './lib/editorUtils'
 
 const App: React.FC = () => {
@@ -26,6 +29,8 @@ const App: React.FC = () => {
   const [showAssets, setShowAssets] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState(0)
+  const [exportPreset, setExportPreset] = useState<ExportPresetName>('720p')
+  const [showAuth, setShowAuth] = useState(false)
   const isOnline = useOnlineStatus()
   
   // Initialize project manager (auto-save functionality)
@@ -36,6 +41,7 @@ const App: React.FC = () => {
   // Register Enter / Esc (proposal) + Cmd+Z/Y (undo/redo)
   useGhostPreviewKeys()
   useTimelineShortcuts()
+  useDesktopFileDrop(projectId)
 
   const compositionTree = useEditorStore((s) => s.compositionTree)
   const proposedComposition = useEditorStore((s) => s.proposedComposition)
@@ -72,18 +78,18 @@ const App: React.FC = () => {
         tracks: compositionTree,
         totalFrames,
         fps,
+        preset: exportPreset,
         onProgress: setExportProgress,
       })
 
-      const downloadUrl = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = downloadUrl
-      anchor.download = filename
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000)
-      toast.success('Edited video downloaded successfully.')
+      const outcome = await saveExportFile(filename, blob)
+      if (outcome === 'cancelled') {
+        toast.info('Export cancelled')
+      } else if (outcome === 'saved') {
+        toast.success('Edited video saved.')
+      } else {
+        toast.success('Edited video downloaded successfully.')
+      }
     } catch (error) {
       console.error('Export failed:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to export the edited video')
@@ -105,26 +111,20 @@ const App: React.FC = () => {
   }
 
   const handleSignOut = async () => {
-    if (hasUnsavedChanges) {
-      const confirmed = window.confirm(
-        'You have unsaved changes. Sign out anyway? Your changes may be lost.'
-      )
-      if (!confirmed) return
+    writeLocalProject({ tracks: compositionTree, totalFrames, fps })
+    if (user && hasUnsavedChanges) {
+      try {
+        await forceSave()
+      } catch (error) {
+        console.error('Cloud save failed before sign out', error)
+        const confirmed = window.confirm('Cloud save failed. Sign out and keep the local copy?')
+        if (!confirmed) return
+      }
     }
     await signOut()
+    setShowAuth(false)
   }
 
-  // Show auth modal if not authenticated
-  if (!authLoading && !user) {
-    return (
-      <>
-        <AuthModal />
-        <ToastContainer />
-      </>
-    )
-  }
-
-  // Show loading state while checking auth
   if (authLoading) {
     return (
       <div style={{
@@ -224,6 +224,26 @@ const App: React.FC = () => {
               <span>💾</span>
               {hasUnsavedChanges ? 'Save •' : 'Saved'}
             </button>
+            <select
+              aria-label="Export quality"
+              value={exportPreset}
+              onChange={(event) => setExportPreset(event.target.value as ExportPresetName)}
+              disabled={exporting}
+              style={{
+                background: '#252525',
+                border: '1px solid #333',
+                borderRadius: 6,
+                color: '#aaa',
+                fontSize: 12,
+                padding: '6px 8px',
+              }}
+            >
+              {(Object.keys(EXPORT_PRESETS) as ExportPresetName[]).map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
             <button
               onClick={handleExport}
               disabled={exporting || hasMissingMedia || Boolean(proposedComposition)}
@@ -364,21 +384,38 @@ const App: React.FC = () => {
             {user?.email?.charAt(0).toUpperCase() || 'U'}
           </div>
           
-          <button
-            onClick={handleSignOut}
-            style={{
-              background: '#252525',
-              border: '1px solid #333',
-              borderRadius: 6,
-              color: '#888',
-              fontSize: 12,
-              padding: '6px 12px',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-          >
-            Sign Out
-          </button>
+          {user ? (
+            <button
+              onClick={handleSignOut}
+              style={{
+                background: '#252525',
+                border: '1px solid #333',
+                borderRadius: 6,
+                color: '#888',
+                fontSize: 12,
+                padding: '6px 12px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              Sign Out
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowAuth(true)}
+              style={{
+                background: '#252525',
+                border: '1px solid #333',
+                borderRadius: 6,
+                color: '#ccc',
+                fontSize: 12,
+                padding: '6px 12px',
+                cursor: 'pointer',
+              }}
+            >
+              Sign In
+            </button>
+          )}
         </div>
       </header>
 
@@ -411,6 +448,8 @@ const App: React.FC = () => {
       )}
 
       {/* ── AI Prompt modal (rendered at root, above everything) ── */}
+      {showAuth && !user && <AuthModal onClose={() => setShowAuth(false)} />}
+
       <PromptModal />
 
       {/* ── Keyboard Shortcuts Modal ── */}
@@ -458,6 +497,9 @@ const App: React.FC = () => {
                 { keys: 'S', action: 'Split selected clip at playhead' },
                 { keys: 'D', action: 'Duplicate selected clip' },
                 { keys: 'Delete', action: 'Delete selected clip' },
+                { keys: 'Shift+Delete', action: 'Ripple delete selected clip' },
+                { keys: '← / →', action: 'Nudge selected clip by 1 frame' },
+                { keys: 'Shift+← / →', action: 'Nudge selected clip by 5 frames' },
                 { keys: 'Space', action: 'Play/Pause' },
               ].map(({ keys, action }) => (
                 <div key={keys} style={{ 

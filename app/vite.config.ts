@@ -10,7 +10,12 @@ export default defineConfig({
     topLevelAwait(),  // required: wasm init uses top-level await
   ],
   server: {
+    host: '127.0.0.1',
     port: 3000,
+    strictPort: true,
+    watch: {
+      ignored: ['**/src-tauri/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:4000',

@@ -1,7 +1,104 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { AbsoluteFill, Html5Audio, Img, Html5Video, Sequence, interpolate, useCurrentFrame } from 'remotion'
-import { type Clip, type Track } from '../../store/useEditorStore'
+import { type Clip, type Track, useEditorStore } from '../../store/useEditorStore'
 import { getSafeMediaTrimProps, validateClip } from '../../lib/clipValidation'
+import { applyPixelFilter, cssFilterFor, type PixelFilterName } from '../../lib/pixelFilter'
+
+const playbackSrc = (clip: Clip) => clip.previewUrl || clip.assetUrl || ''
+
+const PausedWasmGrade: React.FC<{ clip: Clip; src: string; filter: PixelFilterName }> = ({ clip, src, filter }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [ready, setReady] = useState(false)
+  const frame = useCurrentFrame()
+  const fps = useEditorStore((state) => state.fps)
+  const isPlaying = useEditorStore((state) => state.isPlaying)
+
+  useEffect(() => {
+    if (isPlaying) {
+      setReady(false)
+      return
+    }
+
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    let cancelled = false
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) return
+
+    const paint = async (element: CanvasImageSource) => {
+      if (cancelled) return
+      canvas.width = 640
+      canvas.height = 360
+      context.drawImage(element, 0, 0, canvas.width, canvas.height)
+      const image = context.getImageData(0, 0, canvas.width, canvas.height)
+      const filtered = await applyPixelFilter(new Uint8Array(image.data), filter)
+      if (cancelled) return
+      image.data.set(filtered)
+      context.putImageData(image, 0, 0)
+      setReady(true)
+    }
+
+    if (clip.mediaType === 'image') {
+      const image = new Image()
+      image.crossOrigin = 'anonymous'
+      image.onload = () => {
+        paint(image).catch(() => setReady(false))
+      }
+      image.onerror = () => setReady(false)
+      image.src = src
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const video = document.createElement('video')
+    video.crossOrigin = 'anonymous'
+    video.muted = true
+    video.preload = 'auto'
+    video.playsInline = true
+    video.src = src
+
+    const seek = () => {
+      const seconds = ((clip.mediaStart ?? 0) + frame) / Math.max(fps, 1)
+      const duration = Number.isFinite(video.duration) ? video.duration : seconds
+      video.currentTime = Math.min(Math.max(0, seconds), duration)
+    }
+
+    const onSeeked = () => {
+      paint(video).catch(() => setReady(false))
+    }
+
+    video.addEventListener('loadeddata', seek)
+    video.addEventListener('seeked', onSeeked)
+    video.addEventListener('error', () => setReady(false))
+
+    return () => {
+      cancelled = true
+      video.removeEventListener('loadeddata', seek)
+      video.removeEventListener('seeked', onSeeked)
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+  }, [clip.mediaStart, clip.mediaType, filter, fps, frame, isPlaying, src])
+
+  if (isPlaying) return null
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        opacity: ready ? 1 : 0,
+      }}
+    />
+  )
+}
 
 const getMediaFailureMessage = (clip: Clip, error?: string) => {
   if (error && error.trim().length > 0) {
@@ -70,7 +167,7 @@ const VideoClipRenderer: React.FC<{
 
   useEffect(() => {
     setErrorMessage(null)
-  }, [clip.id, clip.assetUrl, clip.mediaStart, clip.mediaEnd])
+  }, [clip.id, clip.assetUrl, clip.previewUrl, clip.mediaStart, clip.mediaEnd])
 
   if (errorMessage) {
     return (
@@ -81,15 +178,19 @@ const VideoClipRenderer: React.FC<{
     )
   }
 
+  const src = playbackSrc(clip)
+  const cssFilter = clip.pixelFilter ? cssFilterFor(clip.pixelFilter) : undefined
+
   return (
     <AbsoluteFill style={{ opacity }}>
       <Html5Video
-        src={clip.assetUrl!}
+        src={src}
         trimBefore={trimBefore}
         trimAfter={trimAfter}
         onError={(error) => setErrorMessage(error.message)}
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', filter: cssFilter }}
       />
+      {clip.pixelFilter && <PausedWasmGrade clip={clip} src={src} filter={clip.pixelFilter} />}
     </AbsoluteFill>
   )
 }
@@ -129,7 +230,7 @@ const ImageClipRenderer: React.FC<{ clip: Clip; opacity: number }> = ({ clip, op
 
   useEffect(() => {
     setHasError(false)
-  }, [clip.id, clip.assetUrl])
+  }, [clip.id, clip.assetUrl, clip.previewUrl])
 
   if (hasError) {
     return (
@@ -140,13 +241,17 @@ const ImageClipRenderer: React.FC<{ clip: Clip; opacity: number }> = ({ clip, op
     )
   }
 
+  const src = playbackSrc(clip)
+  const cssFilter = clip.pixelFilter ? cssFilterFor(clip.pixelFilter) : undefined
+
   return (
     <AbsoluteFill style={{ opacity }}>
       <Img
-        src={clip.assetUrl!}
+        src={src}
         onError={() => setHasError(true)}
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', filter: cssFilter }}
       />
+      {clip.pixelFilter && <PausedWasmGrade clip={clip} src={src} filter={clip.pixelFilter} />}
     </AbsoluteFill>
   )
 }

@@ -8,3 +8,7 @@ build/
 .DS_Store
 # WASM build output (regenerate with ./wasm/build.sh)
 app/src/wasm-pkg/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/schemas

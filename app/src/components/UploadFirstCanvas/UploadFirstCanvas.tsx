@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react'
-import { uploadAsset } from '../../lib/assetService'
+import { importLocalPath, schedulePlaybackProxy, uploadAsset } from '../../lib/assetService'
+import { isDesktopApp, pickMediaPaths } from '../../lib/desktop'
 import { useEditorStore } from '../../store/useEditorStore'
 import { toast } from '../../lib/toastStore'
 
@@ -44,8 +45,25 @@ export const UploadFirstCanvas: React.FC<UploadFirstCanvasProps> = ({
     if (projectStatus === 'loading') return 'Preparing your project...'
     if (projectStatus === 'error') return null
     if (uploading) return 'Uploading video...'
-    return 'Upload an MP4, MOV, or WebM video to start editing'
+    return isDesktopApp()
+      ? 'Open an MP4, MOV, MKV, or WebM from this computer'
+      : 'Upload an MP4, MOV, or WebM video to start editing'
   }, [projectStatus, uploading])
+
+  const placeVideo = (asset: { playback_url: string; id: string; name: string; duration_seconds: number | null; preview_url?: string | null }) => {
+    const durationFrames = asset.duration_seconds
+      ? Math.max(1, Math.round(asset.duration_seconds * fps))
+      : fps * 5
+
+    addAssetToTrackType('video', {
+      assetUrl: asset.playback_url,
+      assetId: asset.id,
+      mediaType: 'video',
+      label: asset.name,
+      durationFrames,
+      previewUrl: asset.preview_url ?? undefined,
+    })
+  }
 
   const ingestVideo = async (file: File) => {
     if (!projectId) {
@@ -71,17 +89,8 @@ export const UploadFirstCanvas: React.FC<UploadFirstCanvasProps> = ({
         projectId,
       })
 
-      const durationFrames = asset.duration_seconds
-        ? Math.max(1, Math.round(asset.duration_seconds * fps))
-        : fps * 5
-
-      addAssetToTrackType('video', {
-        assetUrl: asset.playback_url,
-        assetId: asset.id,
-        mediaType: 'video',
-        label: asset.name,
-        durationFrames,
-      })
+      placeVideo(asset)
+      window.dispatchEvent(new Event('avi:assets-changed'))
 
       toast.success(`"${asset.name}" is ready. AI editing is now available.`)
     } catch (error) {
@@ -90,6 +99,34 @@ export const UploadFirstCanvas: React.FC<UploadFirstCanvasProps> = ({
     } finally {
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  const openLocalVideo = async () => {
+    if (!projectId) {
+      toast.warning('Project is still initializing. Try again in a moment.')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const paths = await pickMediaPaths(true)
+      const path = paths[0]
+      if (!path) return
+      const asset = await importLocalPath(path, projectId)
+      if (asset.file_type !== 'video') {
+        toast.error('Open a video first. Audio and images can be added after the editor opens.')
+        return
+      }
+      void schedulePlaybackProxy(asset).catch(() => undefined)
+      placeVideo(asset)
+      window.dispatchEvent(new Event('avi:assets-changed'))
+      toast.success(`"${asset.name}" is ready. AI editing is now available.`)
+    } catch (error) {
+      console.error('Local video import failed:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to open your video')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -239,7 +276,9 @@ export const UploadFirstCanvas: React.FC<UploadFirstCanvasProps> = ({
               ? 'Project setup failed'
               : isDragging
               ? 'Drop your video here'
-              : 'Upload your first video'}
+              : isDesktopApp()
+                ? 'Open your first video'
+                : 'Upload your first video'}
           </div>
           {projectStatus === 'error' ? (
             <>
@@ -270,7 +309,13 @@ export const UploadFirstCanvas: React.FC<UploadFirstCanvasProps> = ({
                 <div style={{ fontSize: 13, color: '#808080', textAlign: 'center' }}>{helperText}</div>
               )}
               <button
-                onClick={() => inputRef.current?.click()}
+                onClick={() => {
+                  if (isDesktopApp()) {
+                    void openLocalVideo()
+                    return
+                  }
+                  inputRef.current?.click()
+                }}
                 disabled={!canUpload}
                 style={{
                   marginTop: 4,
@@ -285,7 +330,7 @@ export const UploadFirstCanvas: React.FC<UploadFirstCanvasProps> = ({
                   boxShadow: canUpload ? '0 14px 30px rgba(233,69,96,0.28)' : 'none',
                 }}
               >
-                {uploading ? 'Uploading...' : 'Choose Video'}
+                {uploading ? 'Opening...' : isDesktopApp() ? 'Open Video' : 'Choose Video'}
               </button>
             </>
           )}

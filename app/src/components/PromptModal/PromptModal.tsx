@@ -3,6 +3,7 @@ import { useEditorStore, type Track } from '../../store/useEditorStore'
 import { useAuth } from '../../lib/authContext'
 import { toast } from '../../lib/toastStore'
 import { hasUsableVideoClips } from '../../lib/editorUtils'
+import { applyLocalPrompt } from '../../lib/localPrompt'
 
 // ── Types shared with the API ──────────────────────────────────────────────────
 export interface PromptRequest {
@@ -27,6 +28,23 @@ export interface PromptResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 /** Clips whose range overlaps with the selection (or all clips if no selection). */
+const restorePreviewUrls = (nextTracks: Track[], currentTracks: Track[]): Track[] => {
+  const previews = new Map<string, string>()
+  for (const track of currentTracks) {
+    for (const clip of track.clips) {
+      if (clip.assetId && clip.previewUrl) previews.set(clip.assetId, clip.previewUrl)
+    }
+  }
+
+  return nextTracks.map((track) => ({
+    ...track,
+    clips: track.clips.map((clip) => ({
+      ...clip,
+      previewUrl: clip.previewUrl ?? (clip.assetId ? previews.get(clip.assetId) : undefined),
+    })),
+  }))
+}
+
 const getContextClips = (tracks: Track[], range: { startFrame: number; endFrame: number } | null) => {
   if (!range) return tracks.flatMap((t) => t.clips)
   return tracks.flatMap((t) =>
@@ -85,12 +103,6 @@ export const PromptModal: React.FC = () => {
       return
     }
 
-    const accessToken = session?.access_token
-    if (!accessToken) {
-      toast.error('Sign in again to use AI editing')
-      return
-    }
-    
     if (status === 'loading') return
 
     setStatus('loading')
@@ -100,6 +112,33 @@ export const PromptModal: React.FC = () => {
     const sanitizedPrompt = trimmedPrompt
       .replace(/[<>]/g, '')
       .substring(0, 1000)
+
+    const stageLocal = (note: string) => {
+      const local = applyLocalPrompt({
+        prompt: sanitizedPrompt,
+        frameRange: currentSelection,
+        tracks: compositionTree,
+        totalFrames,
+        fps,
+      })
+      setResponse({
+        success: true,
+        explanation: `${local.explanation} ${note}`,
+        modifiedComposition: {
+          tracks: restorePreviewUrls(local.tracks, compositionTree),
+          totalFrames: local.totalFrames,
+          fps: local.fps,
+        },
+      })
+      setStatus('done')
+      toast.success('Local edit is ready to preview')
+    }
+
+    const accessToken = session?.access_token
+    if (!accessToken) {
+      stageLocal('(offline edit)')
+      return
+    }
 
     const body: PromptRequest = {
       prompt: sanitizedPrompt,
@@ -118,32 +157,27 @@ export const PromptModal: React.FC = () => {
       })
 
       if (!res.ok) {
-        const errorPayload = await res.json().catch(() => null) as { error?: string } | null
-        if (res.status === 422) {
-          throw new Error('AI response was malformed. Please try again.')
-        }
-        throw new Error(errorPayload?.error || `API error ${res.status}`)
+        throw new Error(`API error ${res.status}`)
       }
 
       const data: PromptResponse = await res.json()
       
-      // Validate response shape before setting
       if (!data.modifiedComposition || !data.modifiedComposition.tracks) {
         throw new Error('Invalid response from AI: missing composition data')
       }
-      
-      setResponse(data)
+
+      setResponse({
+        ...data,
+        modifiedComposition: {
+          ...data.modifiedComposition,
+          tracks: restorePreviewUrls(data.modifiedComposition.tracks, compositionTree),
+        },
+      })
       setStatus('done')
       toast.success('AI response generated successfully!')
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error'
-      setErrorMsg(message)
-      setStatus('error')
-      if (message === 'AI response was malformed. Please try again.') {
-        toast.error('AI response was malformed. Please try again.')
-      } else {
-        toast.error('Failed to generate AI response')
-      }
+      console.warn('Cloud prompt failed, using the local editor', err)
+      stageLocal('(cloud model unavailable)')
     }
   }, [prompt, status, currentSelection, compositionTree, totalFrames, fps, canUseAi, session])
 
