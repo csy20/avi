@@ -136,7 +136,7 @@ const App: React.FC = () => {
       }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 32, fontWeight: 800, color: '#e94560', marginBottom: 20 }}>
-            A-Vi
+            avi
           </div>
           <Spinner size="large" text="Initializing your workspace..." />
         </div>
@@ -171,7 +171,7 @@ const App: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 18, color: '#e94560' }}>✦</span>
           <span style={{ fontSize: 16, fontWeight: 800, color: '#fff', letterSpacing: 0.5 }}>
-            A-Vi
+            avi
           </span>
           <div style={{ 
             width: 1, 

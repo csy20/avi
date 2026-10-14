@@ -1,8 +1,8 @@
-# A-Vi: AI-Powered Video Editor
+# avi: AI-Powered Video Editor
 
 ## Project Overview
 
-**A-Vi** is a web-based AI-powered video editor that combines a modern timeline-based editing interface with artificial intelligence capabilities. It allows users to upload media assets (video, audio, images), arrange them on a timeline, and use AI prompts to modify their video compositions.
+**avi** is a local-first AI video editor that combines a modern timeline-based editing interface with artificial intelligence capabilities. It allows users to upload media assets (video, audio, images), arrange them on a timeline, and use AI prompts to modify their video compositions.
 
 ### Core Features
 
@@ -20,7 +20,7 @@
 ### Monorepo Structure
 
 ```
-a_vi/
+avi/
 ├── app/                    # Frontend (React + Vite)
 │   ├── src/
 │   │   ├── components/    # React components
@@ -343,7 +343,7 @@ GEMINI_API_KEY=your_gemini_api_key
 
 ```bash
 # Install dependencies
-cd Documents/dev/a_vi
+cd /path/to/avi
 npm install
 
 # Run both app and API concurrently
@@ -368,7 +368,7 @@ The codebase references several bug fixes (marked as FIX: comments):
 
 ## Summary
 
-A-Vi is a sophisticated video editing web application that combines:
+avi is a local-first video editor that combines:
 1. **Modern React frontend** with Vite for fast development
 2. **Zustand state management** for complex timeline editing
 3. **Remotion** for video rendering and preview

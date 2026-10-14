@@ -1,5 +1,5 @@
 -- =====================================================
--- Supabase Schema for A-Vi Video Editor
+-- Supabase Schema for avi video editor
 -- Run this in your Supabase SQL Editor
 -- =====================================================
 

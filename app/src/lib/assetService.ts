@@ -41,7 +41,7 @@ export interface UploadAssetOptions {
 const DB_NAME = 'avi-local-assets'
 const DB_VERSION = 1
 const STORE_NAME = 'assets'
-const EXPORTED_FILE_NAME_PATTERN = /^a-vi-export-/i
+const EXPORTED_FILE_NAME_PATTERN = /^avi-export-/i
 
 let dbPromise: Promise<IDBDatabase> | null = null
 

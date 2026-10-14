@@ -50,7 +50,7 @@ export const HelloComposition: React.FC = () => {
             letterSpacing: 2,
           }}
         >
-          A-Vi Editor
+          avi
         </span>
       </div>
 

@@ -2,7 +2,7 @@
 name    = "avi-wasm"
 version = "0.1.0"
 edition = "2021"
-description = "WASM pixel-processing utilities for the A-Vi video editor"
+description = "WASM pixel-processing utilities for the avi video editor"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

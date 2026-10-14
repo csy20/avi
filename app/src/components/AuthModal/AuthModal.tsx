@@ -61,7 +61,7 @@ export function AuthModal() {
         <div style={styles.header}>
           <div style={styles.logo}>
             <span style={styles.logoIcon}>✦</span>
-            <span style={styles.logoText}>A-Vi</span>
+            <span style={styles.logoText}>avi</span>
           </div>
           <h2 style={styles.title}>{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
           <p style={styles.subtitle}>

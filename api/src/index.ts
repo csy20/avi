@@ -20,7 +20,7 @@ app.use(express.json({ limit: '2mb' }))
 
 // Health check
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'a-vi-api', timestamp: new Date().toISOString() })
+  res.json({ status: 'ok', service: 'avi-api', timestamp: new Date().toISOString() })
 })
 
 // Routes

@@ -1,6 +1,6 @@
-# A-Vi Codebase — Robustness & Logic Analysis Report
+# avi codebase — robustness and logic analysis
 
-**Project:** A-Vi (AI-Powered Video Editor)
+**Project:** avi (AI video editor)
 **Date Analyzed:** 2026-05-14
 **Files Analyzed:** 44 source files across `app/src/`, `api/src/`, and `wasm/src/`
 
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The A-Vi codebase is **reasonably robust** for a development-stage project. Core editing logic (Zustand store, timeline components, Rust/WASM module) is well-implemented with proper immutability patterns, error handling, and defensive validation. A full review identified **15 issues** across critical, moderate, and minor severity levels. All issues have been **fixed** as documented below.
+The avi codebase is **reasonably robust** for a development-stage project. Core editing logic (Zustand store, timeline components, Rust/WASM module) is well-implemented with proper immutability patterns, error handling, and defensive validation. A full review identified **15 issues** across critical, moderate, and minor severity levels. All issues have been **fixed** as documented below.
 
 ---
 
